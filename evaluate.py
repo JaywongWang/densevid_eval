@@ -155,6 +155,10 @@ class ANETcaptions(object):
         gt_vid_ids = self.get_gt_vid_ids()
         
         unique_index = 0
+        
+        # The number of predictions that have no matching gts
+        # Fix the bug from the garbage caption "abc123!@#": if we set all prediction items to some out-of-bound timestamps and garbage captions, then the predictions will obtain 100% score
+        mismatch_count = {index: 0 for index in gt_vid_ids}
 
         # video id to unique caption ids mapping
         vid2capid = {}
@@ -190,14 +194,10 @@ class ANETcaptions(object):
                                 vid2capid[vid_id].append(unique_index)
                                 unique_index += 1
                                 has_added = True
-
+                    
                     # If the predicted caption does not overlap with any ground truth,
-                    # we should compare it with garbage
                     if not has_added:
-                        cur_res[unique_index] = [{'caption': remove_nonascii(pred['sentence'])}]
-                        cur_gts[unique_index] = [{'caption': 'abc123!@#'}]
-                        vid2capid[vid_id].append(unique_index)
-                        unique_index += 1
+                        mismatch_count[vid_id] += 1
 
         # Each scorer will compute across all videos and take average score
         output = {}
@@ -226,7 +226,12 @@ class ANETcaptions(object):
                         score = 0
                 else:
                     score, scores = scorer.compute_score(gts[vid_id], res[vid_id])
-                all_scores[vid_id] = score
+                
+                print scores
+                print len(scores)
+                
+                # Mismatch items are marked as 0. score, the final score for each video will be calculated as follows
+                all_scores[vid_id] = sum(scores) / float(len(scores) + mismatch_count[vid_id])
 
             print all_scores.values()
             if type(method) == list:
